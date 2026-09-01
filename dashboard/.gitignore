@@ -1,15 +1,20 @@
-# v0 sandbox internal files
+# Dependencies and Next.js build files
+node_modules/
+.next/
+
+# Environment files - never commit secrets
+.env
+.env.local
+.env.*.local
+!.env.example
+
+# Vercel and v0 internal files
+.vercel/
+.v0-trash/
+.snowflake/
 __v0_runtime_loader.js
 __v0_devtools.tsx
 __v0_jsx-dev-runtime.ts
-.snowflake/
-.v0-trash/
-.vercel/
 
-# Environment variables
-.env*.local
-
-# Common ignores
-node_modules
-.next/
+# System files
 .DS_Store
