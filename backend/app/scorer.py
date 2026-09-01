@@ -1,7 +1,16 @@
 """
-DataShield Backend — Overall Privacy-Risk Scoring
-Worst-case field dominates the score (70%), average nudges it (30%) —
-so one critical field is enough to flag the whole scan as critical.
+DataShield Backend — Privacy Score
+
+overall_score is a PRIVACY SCORE:
+    100 = safest
+      0 = highest privacy risk
+
+Risk is calculated from:
+    1. field sensitivity
+    2. whether the field is reasonable in the page context
+
+A sensitive field that is legitimately required should NOT be
+treated the same as a sensitive field requested without justification.
 """
 
 SENSITIVITY_WEIGHT: dict[str, int] = {
@@ -12,29 +21,71 @@ SENSITIVITY_WEIGHT: dict[str, int] = {
     "unknown": 30,
 }
 
-RISK_THRESHOLDS: list[tuple[int, str]] = [
-    (85, "critical"),
-    (55, "high"),
-    (30, "medium"),
-    (0, "low"),
-]
+# Reasonable sensitive fields still carry some inherent privacy impact.
+# Low-sensitivity reasonable fields have essentially no privacy penalty.
+REASONABLE_MULTIPLIER: dict[str, float] = {
+    "low": 0.0,
+    "medium": 1.0,
+    "high": 0.5,
+    "critical": 0.5,
+    "unknown": 1.0,
+}
 
 
-def score_scan(sensitivities: list[str]) -> tuple[int, str]:
+def score_scan(
+    sensitivities: list[str],
+    reasonables: list[bool],
+) -> tuple[int, str]:
+
     if not sensitivities:
-        return 0, "low"
+        return 100, "low"
 
-    weights = [SENSITIVITY_WEIGHT.get(s, SENSITIVITY_WEIGHT["unknown"]) for s in sensitivities]
-    max_weight = max(weights)
-    avg_weight = sum(weights) / len(weights)
+    if len(sensitivities) != len(reasonables):
+        raise ValueError(
+            "sensitivities and reasonables must have the same length"
+        )
 
-    overall_score = round(0.7 * max_weight + 0.3 * avg_weight)
-    overall_score = max(0, min(100, overall_score))
+    risk_weights = []
 
-    risk_level = "low"
-    for threshold, level in RISK_THRESHOLDS:
-        if overall_score >= threshold:
-            risk_level = level
-            break
+    for sensitivity, reasonable in zip(sensitivities, reasonables):
+        base_weight = SENSITIVITY_WEIGHT.get(
+            sensitivity,
+            SENSITIVITY_WEIGHT["unknown"],
+        )
+
+        if reasonable:
+            penalty = base_weight * REASONABLE_MULTIPLIER.get(
+                sensitivity,
+                1.0,
+            )
+        else:
+            # Unjustified sensitive data request gets the full penalty.
+            penalty = base_weight
+
+        risk_weights.append(penalty)
+
+    max_risk = max(risk_weights)
+    average_risk = sum(risk_weights) / len(risk_weights)
+
+    # Worst field dominates, while the average still matters.
+    risk_score = round(
+        0.7 * max_risk +
+        0.3 * average_risk
+    )
+
+    risk_score = max(0, min(100, risk_score))
+
+    # IMPORTANT:
+    # Higher overall_score = BETTER privacy.
+    overall_score = 100 - risk_score
+
+    if overall_score >= 75:
+        risk_level = "low"
+    elif overall_score >= 50:
+        risk_level = "medium"
+    elif overall_score >= 25:
+        risk_level = "high"
+    else:
+        risk_level = "critical"
 
     return overall_score, risk_level

@@ -1,0 +1,10 @@
+[
+  {
+    "summary": "Score is 90, low risk level.",
+    "evidence": [
+      "Name is reasonably requested.",
+      "Email is reasonably requested."
+    ],
+    "recommendation": "Fill out your name and email."
+  }
+]

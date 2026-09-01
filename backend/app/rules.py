@@ -1,255 +1,299 @@
 """
-DataShield Backend — Context-Aware Privacy Rules
+DataShield Backend — Contextual Reasonableness Rules
 
-Uses Context Final.csv to determine whether a requested field
-is expected or potentially unnecessary for a given website context.
+Uses:
+1. Context-field CSV for evidence-based contextual decisions.
+2. Existing keyword rules as fallback when the CSV has no matching example.
 """
 
 from pathlib import Path
-import csv
+import re
+
+import pandas as pd
 
 from app.models import ScanRequest
 
 
-# ------------------------------------------------------------
-# DATASET LOCATION
-# ------------------------------------------------------------
+# -------------------------------------------------------------------
+# Load contextual dataset
+# -------------------------------------------------------------------
 
-DATASET_PATH = (
-    Path(__file__).resolve().parents[2]
-    / "data"
-    / "Context Final.csv"
-)
+DATA_FILE = Path(__file__).resolve().parent.parent.parent / "data" / "Context_Expanded_Fixed.csv"
 
-
-# ------------------------------------------------------------
-# LOAD DATASET
-# ------------------------------------------------------------
-
-CONTEXT_RULES: dict[str, dict[str, str]] = {}
+try:
+    CONTEXT_DATA = pd.read_csv(DATA_FILE)
+    CONTEXT_DATA["Website"] = CONTEXT_DATA["Website"].astype(str).str.strip().str.lower()
+    CONTEXT_DATA["Field"] = CONTEXT_DATA["Field"].astype(str).str.strip().str.lower()
+    CONTEXT_DATA["Status"] = CONTEXT_DATA["Status"].astype(str).str.strip()
+except Exception:
+    CONTEXT_DATA = pd.DataFrame(columns=["Website", "Field", "Status"])
 
 
-def load_context_rules() -> None:
-    """Load website/field rules from Context Final.csv."""
+# -------------------------------------------------------------------
+# Existing fallback rules
+# -------------------------------------------------------------------
 
-    if not DATASET_PATH.exists():
-        raise FileNotFoundError(
-            f"Context dataset not found: {DATASET_PATH}"
-        )
-
-    with open(DATASET_PATH, "r", encoding="utf-8-sig", newline="") as file:
-        reader = csv.DictReader(file)
-
-        for row in reader:
-            website = row["Website"].strip()
-            field = row["Field"].strip()
-            status = row["Status"].strip()
-
-            CONTEXT_RULES.setdefault(website, {})
-            CONTEXT_RULES[website][field] = status
-
-
-load_context_rules()
-
-
-# ------------------------------------------------------------
-# FIELD NORMALIZATION
-# ------------------------------------------------------------
-
-FIELD_ALIASES = {
-    "full_name": "Full_name",
-    "name": "Full_name",
-    "first_name": "Full_name",
-    "last_name": "Full_name",
-
-    "email": "Email_address",
-    "email_address": "Email_address",
-
-    "phone": "Phone_number",
-    "phone_number": "Phone_number",
-    "mobile": "Phone_number",
-
-    "dob": "DOB",
-    "date_of_birth": "DOB",
-    "birthdate": "DOB",
-
-    "address": "Home_address",
-    "home_address": "Home_address",
-
-    "government_id": "Government_id_number",
-    "government_id_number": "Government_id_number",
-    "passport_number": "Government_id_number",
-    "aadhaar": "Government_id_number",
-    "aadhaar_number": "Government_id_number",
-    "pan": "Government_id_number",
-    "pan_number": "Government_id_number",
-
-    "bank_account": "Bank_details",
-    "bank_account_number": "Bank_details",
-    "bank_details": "Bank_details",
-
-    "credit_card": "Bank_details",
-    "card_number": "Bank_details",
+CONTEXT_KEYWORDS: dict[str, list[str]] = {
+    "financial": [
+        "checkout", "payment", "billing", "cart", "subscribe",
+        "donate", "pay", "purchase", "order",
+    ],
+    "government_id": [
+        "kyc", "verify", "identity", "tax", "passport",
+        "apply", "onboarding",
+    ],
+    "health": [
+        "health", "medical", "clinic", "patient", "insurance",
+    ],
+    "biometric": [
+        "verify", "security", "auth", "login", "signin", "sign in",
+    ],
+    "password": [
+        "signup", "sign up", "register", "registration",
+        "login", "log in", "signin", "sign in", "account",
+        "create account", "authentication",
+    ],
+    "security_question": [
+        "signup", "sign up", "register", "recovery",
+        "reset", "security",
+    ],
 }
 
 
-def normalize_field_name(field_name: str) -> str:
-    """
-    Convert an incoming field name into the terminology
-    used by Context Final.csv.
-    """
+# -------------------------------------------------------------------
+# Website-context detection
+# -------------------------------------------------------------------
 
-    normalized = field_name.strip().lower()
+WEBSITE_ALIASES = {
+    "resume_builder": [
+        "resume", "cv", "curriculum", "resume builder",
+    ],
+    "job_application": [
+        "job", "career", "employment", "application",
+        "recruitment", "hiring",
+    ],
+    "newsletter_signup": [
+        "newsletter", "subscribe", "mailing list",
+    ],
+    "account_signup": [
+        "signup", "sign up", "register", "registration",
+        "create account", "join",
+    ],
+    "login": [
+        "login", "log in", "signin", "sign in",
+        "authentication",
+    ],
+    "ecommerce_checkout": [
+        "checkout", "cart", "purchase", "order", "shop",
+        "store", "ecommerce",
+    ],
+    "survey_feedback": [
+        "survey", "feedback", "questionnaire", "review",
+    ],
+    "healthcare_intake": [
+        "health", "medical", "clinic", "patient",
+        "healthcare", "hospital",
+    ],
+    "financial_services": [
+        "bank", "banking", "loan", "finance", "financial",
+        "investment", "broker", "credit",
+    ],
+    "government_sites": [
+        "government", ".gov", "tax", "official",
+    ],
+    "real_estate_rental_application": [
+        "real estate", "rental", "rent", "property",
+        "apartment", "housing", "lease",
+    ],
+    "travel_booking": [
+        "travel", "flight", "hotel", "booking",
+        "reservation", "airline", "vacation",
+    ],
+    "insurance_application": [
+        "insurance", "policy", "claim",
+    ],
+    "event_ticketing": [
+        "ticket", "event", "concert", "festival",
+    ],
+    "subscription_free_trial": [
+        "free trial", "trial", "subscription", "subscribe",
+    ],
+    "dating_app_signup": [
+        "dating", "match", "matches",
+    ],
+    "password_reset": [
+        "password reset", "reset password", "forgot password",
+        "account recovery", "recover account",
+    ],
+    "crypto_exchange_kyc": [
+        "crypto", "cryptocurrency", "exchange", "kyc",
+        "wallet",
+    ],
+}
 
-    return FIELD_ALIASES.get(
-        normalized,
-        field_name.strip()
+
+def _normalize(text: str) -> str:
+    """Normalize text for matching."""
+    text = str(text or "").lower()
+    text = text.replace("-", "_")
+    text = re.sub(r"[^a-z0-9_ ]+", " ", text)
+    text = re.sub(r"\s+", " ", text)
+    return text.strip()
+
+
+def _detect_website_context(request: ScanRequest) -> str | None:
+    """
+    Try to identify the website/form context from URL and page title.
+    """
+    context_text = _normalize(
+        f"{request.url} {request.page_title}"
+    )
+
+    # More specific contexts first.
+    ordered_contexts = [
+        "crypto_exchange_kyc",
+        "password_reset",
+        "ecommerce_checkout",
+        "healthcare_intake",
+        "real_estate_rental_application",
+        "financial_services",
+        "insurance_application",
+        "dating_app_signup",
+        "subscription_free_trial",
+        "newsletter_signup",
+        "event_ticketing",
+        "travel_booking",
+        "government_sites",
+        "job_application",
+        "resume_builder",
+        "survey_feedback",
+        "account_signup",
+        "login",
+    ]
+
+    for context in ordered_contexts:
+        for keyword in WEBSITE_ALIASES[context]:
+            if _normalize(keyword) in context_text:
+                return context
+
+    return None
+
+
+# -------------------------------------------------------------------
+# Field matching
+# -------------------------------------------------------------------
+
+FIELD_ALIASES = {
+    "name": [
+        "full_name", "fullname", "first_name", "last_name",
+        "name", "display_name",
+    ],
+    "email": [
+        "email", "email_address",
+    ],
+    "phone": [
+        "phone", "phone_number", "mobile", "mobile_number",
+        "telephone",
+    ],
+    "password": [
+        "password", "passcode",
+    ],
+    "username": [
+        "username", "email_username", "user_id",
+    ],
+    "date_of_birth": [
+        "dob", "date_of_birth", "birthdate", "birthday",
+    ],
+    "address": [
+        "address", "home_address", "billing_address",
+        "shipping_address",
+    ],
+    "government_id": [
+        "government_id_number", "government_id",
+        "passport", "passport_number", "national_id",
+        "ssn", "social_security", "tax_id", "pan_number",
+        "driver_license",
+    ],
+    "financial": [
+        "financial_card_details", "payment_card_details",
+        "credit_card", "card_number", "bank_details",
+        "financial_details", "payment",
+    ],
+    "health": [
+        "health_information", "health_medical_history",
+        "medical_history", "health",
+    ],
+}
+
+
+def _field_matches_category(field_name: str, category: str) -> bool:
+    """
+    Determine whether a CSV field description corresponds
+    to the backend's classified category.
+    """
+    field_name = _normalize(field_name)
+
+    if field_name in FIELD_ALIASES.get(category, []):
+        return True
+
+    return any(
+        alias in field_name
+        for alias in FIELD_ALIASES.get(category, [])
     )
 
 
-# ------------------------------------------------------------
-# WEBSITE CONTEXT DETECTION
-# ------------------------------------------------------------
+# -------------------------------------------------------------------
+# CSV lookup
+# -------------------------------------------------------------------
 
-def detect_website_context(request: ScanRequest) -> str | None:
-    """
-    Identify the dataset context from the page URL/title.
+def _csv_reasonableness(
+    category: str,
+    website_context: str | None,
+) -> tuple[bool, str] | None:
 
-    Returns the matching dataset Website name or None.
-    """
-
-    context_text = (
-        f"{request.url} {request.page_title}"
-    ).lower()
-
-    # Explicit context keywords.
-    context_keywords = {
-        "Resume_Builder": [
-            "resume",
-            "cv builder",
-            "cv",
-        ],
-        "Job_Application": [
-            "job application",
-            "job",
-            "career",
-            "careers",
-            "employment",
-            "apply for job",
-        ],
-        "Newsletter_Signup": [
-            "newsletter",
-            "subscribe to newsletter",
-        ],
-        "Account_Signup": [
-            "create account",
-            "sign up",
-            "signup",
-            "register",
-            "registration",
-        ],
-        "Login": [
-            "login",
-            "log in",
-            "signin",
-            "sign in",
-        ],
-        "Ecommerce_Checkout": [
-            "checkout",
-            "shopping cart",
-            "cart",
-            "place order",
-        ],
-        "Survey_Feedback": [
-            "survey",
-            "feedback",
-        ],
-        "Healthcare_Intake": [
-            "healthcare",
-            "health",
-            "medical",
-            "clinic",
-            "patient intake",
-        ],
-        "Financial_Services": [
-            "bank",
-            "banking",
-            "financial",
-            "finance",
-            "loan",
-            "investment",
-        ],
-        "Government_Sites": [
-            "government",
-            ".gov",
-            "government services",
-        ],
-        "Real_Estate_Rental_Application": [
-            "rental application",
-            "rent application",
-            "real estate",
-            "property rental",
-            "apartment rental",
-        ],
-        "Travel_Booking": [
-            "flight",
-            "hotel booking",
-            "travel booking",
-            "travel",
-            "booking",
-        ],
-        "Insurance_Application": [
-            "insurance",
-            "insurance application",
-        ],
-        "Event_Ticketing": [
-            "event ticket",
-            "ticket booking",
-            "concert",
-            "event registration",
-        ],
-        "Subscription_Free_Trial": [
-            "free trial",
-            "subscription",
-            "start trial",
-        ],
-        "Dating_App_Signup": [
-            "dating",
-            "dating app",
-        ],
-        "Password_Reset": [
-            "password reset",
-            "reset password",
-            "forgot password",
-        ],
-        "Crypto_Exchange_KYC": [
-            "crypto",
-            "cryptocurrency",
-            "exchange kyc",
-            "kyc",
-        ],
-    }
-
-    # Check more specific contexts first.
-    matches = []
-
-    for website, keywords in context_keywords.items():
-        for keyword in keywords:
-            if keyword in context_text:
-                matches.append((website, len(keyword)))
-
-    if not matches:
+    if website_context is None or CONTEXT_DATA.empty:
         return None
 
-    # Prefer the longest matching keyword.
-    matches.sort(key=lambda item: item[1], reverse=True)
+    rows = CONTEXT_DATA[
+        CONTEXT_DATA["Website"].apply(
+            lambda value: _normalize(value) == website_context
+        )
+    ]
 
-    return matches[0][0]
+    if rows.empty:
+        return None
+
+    matching_rows = rows[
+        rows["Field"].apply(
+            lambda field: _field_matches_category(field, category)
+        )
+    ]
+
+    if matching_rows.empty:
+        return None
+
+    # If any matching example is Flagged, treat the request as
+    # unreasonable for this context.
+    if (matching_rows["Status"] == "Flagged").any():
+        return (
+            False,
+            f"Context dataset flags '{category}' as unnecessary "
+            f"for this type of form.",
+        )
+
+    if (matching_rows["Status"] == "Can_ask").any():
+        return (
+            True,
+            f"Context dataset supports requesting '{category}' "
+            f"for this type of form.",
+        )
+
+    return None
 
 
-# ------------------------------------------------------------
-# REASONABLENESS
-# ------------------------------------------------------------
+# -------------------------------------------------------------------
+# Main reasonableness function
+# -------------------------------------------------------------------
 
 def is_reasonable(
     category: str,
@@ -257,52 +301,50 @@ def is_reasonable(
     request: ScanRequest,
 ) -> tuple[bool, str]:
 
-    website_context = detect_website_context(request)
+    # Low-sensitivity information is normally reasonable.
+    if sensitivity == "low":
+        return True, "Standard field for this type of form."
 
-    normalized_field = normalize_field_name(category)
+    # First use the expanded contextual dataset.
+    website_context = _detect_website_context(request)
 
-    # --------------------------------------------------------
-    # Dataset-based decision
-    # --------------------------------------------------------
+    csv_result = _csv_reasonableness(
+        category,
+        website_context,
+    )
 
-    if website_context:
-        website_rules = CONTEXT_RULES.get(
-            website_context,
-            {}
-        )
+    if csv_result is not None:
+        return csv_result
 
-        status = website_rules.get(normalized_field)
+    # Fall back to deterministic keyword rules.
+    context_text = (
+        f"{request.url} {request.page_title}"
+    ).lower()
 
-        if status == "Can_ask":
+    keywords = CONTEXT_KEYWORDS.get(category, [])
+
+    if any(keyword in context_text for keyword in keywords):
+        if category == "password":
             return (
                 True,
-                f"{normalized_field} is appropriate for "
-                f"{website_context.replace('_', ' ')}."
+                "Password is appropriate for authentication on a "
+                "login or account-related page.",
             )
 
-        if status == "Flagged":
-            return (
-                False,
-                f"{normalized_field} is flagged as unnecessary "
-                f"for {website_context.replace('_', ' ')}."
-            )
-
-    # --------------------------------------------------------
-    # Safety fallback for sensitive data
-    # --------------------------------------------------------
-
-    if sensitivity in ("critical", "high"):
         return (
-            False,
-            f"{normalized_field} is sensitive and the page "
-            "context does not clearly justify requesting it."
+            True,
+            f"'{category}' data appears justified by the page context.",
         )
 
-    # --------------------------------------------------------
-    # Default for low/medium data
-    # --------------------------------------------------------
+    # Medium-sensitivity fields are not automatically unreasonable.
+    if sensitivity == "medium":
+        return (
+            True,
+            f"'{category}' data may be relevant, but its necessity "
+            f"depends on the specific purpose of the form.",
+        )
 
     return (
-        True,
-        "Standard field for this type of form."
+        False,
+        f"'{category}' data requested without clear contextual justification.",
     )

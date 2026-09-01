@@ -57,6 +57,7 @@ async def root():
 async def scan(payload: ScanRequest):
     field_results = []
     sensitivities = []
+    reasonables = []
 
     for field in payload.fields:
         category = classify_field(field)
@@ -73,8 +74,12 @@ async def scan(payload: ScanRequest):
             )
         )
         sensitivities.append(sensitivity)
+        reasonables.append(reasonable)
 
-    overall_score, risk_level = score_scan(sensitivities)
+    overall_score, risk_level = score_scan(
+        sensitivities,
+        reasonables,
+    )
 
     return ScanResponse(
         scan_id=str(uuid.uuid4())[:8],
