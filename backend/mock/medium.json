@@ -1,0 +1,8 @@
+{
+  "summary": "Score is 60, medium risk level.",
+  "evidence": [
+    "Phone number collection is borderline.",
+    "Date of birth is moderately sensitive."
+  ],
+  "recommendation": "Provide details only if required."
+}
