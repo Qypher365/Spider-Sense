@@ -1,0 +1,9 @@
+import Link from "next/link"
+import { ArrowUpRight, ScanSearch } from "lucide-react"
+import { BrandLogo } from "@/components/brand-logo"
+import { Button } from "@/components/ui/button"
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
+
+export default function ExtensionPreviewPage() {
+  return <div className="flex min-h-screen items-center justify-center bg-background p-4"><Card className="w-full max-w-[380px] overflow-hidden shadow-2xl"><CardHeader className="border-b border-border"><div className="flex items-center gap-3"><BrandLogo className="size-9" priority /><div><CardTitle className="text-base">Spider Sense</CardTitle><p className="text-xs text-muted-foreground">Privacy companion</p></div><span className="ml-auto size-2 rounded-full bg-safe" aria-label="Extension ready" /></div></CardHeader><CardContent className="p-5"><div className="rounded-xl border border-border bg-background/60 p-5 text-center"><div className="mx-auto flex size-12 items-center justify-center rounded-xl bg-primary/10"><ScanSearch className="size-6 text-primary" /></div><h2 className="mt-4 text-lg font-semibold">Ready to sense this page</h2><p className="mt-2 text-sm leading-relaxed text-muted-foreground">Open a supported page to inspect its form-field requests and understand their context.</p></div><div className="mt-5 grid grid-cols-2 gap-3"><div className="rounded-lg bg-muted p-3"><p className="text-xs text-muted-foreground">Fields</p><p className="mt-1 text-lg font-semibold">—</p></div><div className="rounded-lg bg-muted p-3"><p className="text-xs text-muted-foreground">Risk</p><p className="mt-1 text-lg font-semibold">Not scanned</p></div></div><Button nativeButton={false} className="mt-5 w-full" render={<Link href="/scan" />}>Start a scan<ArrowUpRight data-icon="inline-end" /></Button><p className="mt-4 text-center text-xs text-muted-foreground">Detailed reports open in the Spider Sense dashboard.</p></CardContent></Card></div>
+}
