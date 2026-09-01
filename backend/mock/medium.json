@@ -1,8 +1,8 @@
 {
-  "summary": "Score is 60, medium risk level.",
+  "summary": "Score is 30, medium risk level.",
   "evidence": [
-    "Phone number collection is borderline.",
-    "Date of birth is moderately sensitive."
+    "Phone number may be useful for verification, but its purpose here isn't clearly justified.",
+    "Date of birth is moderately sensitive and should only be requested when there's a clear need, like age verification."
   ],
-  "recommendation": "Provide details only if required."
+  "recommendation": "Provide phone or date of birth only if the site explains why it's needed — otherwise you can decline."
 }
