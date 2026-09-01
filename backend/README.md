@@ -1,81 +1,60 @@
-# Spider-Sense
+# Spider-Sense — Backend
 
-**Browser Privacy Guard**
+FastAPI service that receives detected form fields from the extension, runs them through the rule engine (classification → sensitivity → context → scoring), and generates a plain-English explanation from the results — no external AI/LLM calls, purely rule-based.
 
-Detects when websites ask for more personal data than they need — and explains why, in plain English.
-
-Built at **IEEE RAS HackVerse** as a 24-hour prototype.
-
----
-
-## The problem
-
-Websites routinely ask for more personal information than the service actually requires — a resume builder asking for your Government ID, a newsletter signup asking for your date of birth. Most users have no way to tell which requests are reasonable and which aren't.
-
-**Spider-Sense** watches forms as you fill them, scores how risky each requested field is, and explains — in one or two plain sentences — whether the request makes sense for that site.
-
-## How it works
-
-1. **Detect** — the browser extension inspects the DOM of any form on the page
-2. **Classify** — detected fields are sent to the backend and classified by type
-3. **Assess sensitivity** — each field is scored low / medium / high / critical
-4. **Check context** — is this field reasonable for what the page is actually asking you to do?
-5. **Calculate risk** — an overall privacy score and risk level for the whole form
-6. **Explain** — a rule-based explanation engine turns the score and per-field reasoning into a short, human-readable summary and recommendation
-
-```
-Extension (DOM Inspection)
-        ↓
-Backend Rule Engine (Classify → Sensitivity → Context → Score)
-        ↓
-Explanation Engine (templates field notes into plain-English summary/evidence/recommendation)
-        ↓
-Dashboard (risk score, sensitivity matrix, explanation)
-```
-
-## Tech stack
-
-- **Extension:** Chrome MV3, content scripts
-- **Backend:** Python, FastAPI, rule-based classification/scoring/explanation
-- **Dashboard:** Next.js
-
-## Project structure
-
-| Folder | What's in it |
-|---|---|
-| [`extension/`](./extension/README.md) | Chrome MV3 extension — detects form fields, sends them to the backend |
-| [`backend/`](./backend/README.md) | FastAPI service — rule-based classification, sensitivity/context scoring, explanation engine |
-| [`dashboard/`](./dashboard/README.md) | Next.js dashboard — visualizes the risk score and explanation |
-| [`data/`](./data) | Sample scan payloads used for testing and demos |
-| [`docs/`](./docs) | Architecture notes, demo flow, screenshots |
-
-Each subfolder has its own README with setup instructions specific to that part.
-
-## Getting started
-
-Clone the repo, then follow the setup steps in each part:
+## Setup
 
 ```bash
-git clone https://github.com/Qypher365/Spider-Sense.git
-cd Spider-Sense
+cd backend
+python -m venv .venv
+source .venv/bin/activate      # Windows: .venv\Scripts\activate
+pip install -r requirements.txt
 ```
 
-1. [Set up the backend](./backend/README.md)
-2. [Set up the dashboard](./dashboard/README.md)
-3. [Load the extension](./extension/README.md)
+Run the server:
 
-## Team — Team Qubit
+```bash
+uvicorn main:app --reload
+```
 
-Shlok · Himanshu · Sameer · Swastik · Divyansh
+> **Note:** confirm whether your app object lives in `backend/main.py` or `backend/app/main.py` and adjust the command above accordingly (e.g. `uvicorn app.main:app --reload`) — check whichever one actually defines the FastAPI `app` instance.
 
-| Area | Owner(s) |
-|---|---|
-| Browser extension | Shlok, Himanshu |
-| Detection & risk engine | Sameer, Divyansh |
-| Backend | Shlok, Himanshu |
-| Explanation logic | Sameer, Divyansh |
-| Dashboard & experience | Swastik |
+## Folder structure
 
-## License
+```
+backend/
+├── app/
+│   ├── main.py          # FastAPI app + routes
+│   ├── models.py        # Pydantic request/response models
+│   ├── classifier.py    # Field type classification
+│   ├── sensitivity.py   # Sensitivity scoring per field
+│   ├── rules.py         # Context/reasonableness rules
+│   ├── scorer.py        # Overall score + risk_level calculation
+│   └── utils.py         # Shared helpers
+├── tests/
+│   ├── test_scan.py
+│   ├── test_classifier.py
+│   └── test_scorer.py
+├── mock/
+│   ├── safe.json          # Sample scan response (low risk)
+│   ├── medium.json        # Sample scan response (medium risk)
+│   └── critical.json      # Sample scan response (critical risk)
+```
 
-MIT — see [LICENSE](./LICENSE).
+## Explanation engine
+
+Once the rule engine produces `overall_score`, `risk_level`, and `field_results`, a small formatting function builds the `explanation` object merged into the final response:
+
+- `summary` — restates `overall_score` and `risk_level` in plain language
+- `evidence` — one line per field, prioritizing fields where `reasonable: false` or `sensitivity` is high/critical, built directly from that field's `notes`
+- `recommendation` — a short actionable sentence (e.g. "Decline the Government ID field")
+
+This is deterministic template logic, not a live AI/LLM call — no external API, no network dependency, no retry/fallback handling needed. See [`docs/ai-input-output-plan.md`](../docs/ai-input-output-plan.md) for the full field-by-field mapping rules.
+
+## Testing
+
+```bash
+pytest tests/
+```
+
+Use the sample payloads in [`data/`](../data) to test the full pipeline against known safe/medium/critical scenarios without needing a live extension.
