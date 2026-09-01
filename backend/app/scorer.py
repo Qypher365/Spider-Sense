@@ -1,7 +1,7 @@
 """
 DataShield Backend — Privacy Score
 
-overall_score is a PRIVACY SCORE:
+privacy_score is a PRIVACY SCORE:
     100 = safest
       0 = highest privacy risk
 
@@ -76,16 +76,16 @@ def score_scan(
     risk_score = max(0, min(100, risk_score))
 
     # IMPORTANT:
-    # Higher overall_score = BETTER privacy.
-    overall_score = 100 - risk_score
+    # Higher privacy_score = BETTER privacy.
+    privacy_score = 100 - risk_score
 
-    if overall_score >= 75:
+    if privacy_score >= 75:
         risk_level = "low"
-    elif overall_score >= 50:
+    elif privacy_score >= 50:
         risk_level = "medium"
-    elif overall_score >= 25:
+    elif privacy_score >= 25:
         risk_level = "high"
     else:
         risk_level = "critical"
 
-    return overall_score, risk_level
+    return privacy_score, risk_level

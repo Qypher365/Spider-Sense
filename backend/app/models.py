@@ -48,7 +48,7 @@ class FieldResult(BaseModel):
 
 class ScanResponse(BaseModel):
     scan_id: str
-    overall_score: int
+    privacy_score: int
     risk_level: str
     field_results: List[FieldResult]
 

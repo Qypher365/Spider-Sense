@@ -1,9 +1,9 @@
 """
 DataShield Backend — Contextual Reasonableness Rules
 
-Uses:
-1. Context-field CSV for evidence-based contextual decisions.
-2. Existing keyword rules as fallback when the CSV has no matching example.
+Uses the context CSV first.
+Falls back to deterministic keyword rules when
+the CSV has no matching context.
 """
 
 from pathlib import Path
@@ -14,142 +14,299 @@ import pandas as pd
 from app.models import ScanRequest
 
 
-# -------------------------------------------------------------------
-# Load contextual dataset
-# -------------------------------------------------------------------
+# ============================================================
+# LOAD CONTEXT DATASET
+# ============================================================
 
-DATA_FILE = Path(__file__).resolve().parent.parent.parent / "data" / "Context_Expanded_Fixed.csv"
+DATA_FILE = (
+    Path(__file__).resolve().parent.parent.parent
+    / "data"
+    / "Context-Final.csv"
+)
 
 try:
     CONTEXT_DATA = pd.read_csv(DATA_FILE)
-    CONTEXT_DATA["Website"] = CONTEXT_DATA["Website"].astype(str).str.strip().str.lower()
-    CONTEXT_DATA["Field"] = CONTEXT_DATA["Field"].astype(str).str.strip().str.lower()
-    CONTEXT_DATA["Status"] = CONTEXT_DATA["Status"].astype(str).str.strip()
+
+    CONTEXT_DATA["Website"] = (
+        CONTEXT_DATA["Website"]
+        .astype(str)
+        .str.strip()
+        .str.lower()
+    )
+
+    CONTEXT_DATA["Field"] = (
+        CONTEXT_DATA["Field"]
+        .astype(str)
+        .str.strip()
+        .str.lower()
+    )
+
+    CONTEXT_DATA["Status"] = (
+        CONTEXT_DATA["Status"]
+        .astype(str)
+        .str.strip()
+    )
+
 except Exception:
-    CONTEXT_DATA = pd.DataFrame(columns=["Website", "Field", "Status"])
+    CONTEXT_DATA = pd.DataFrame(
+        columns=["Website", "Field", "Status"]
+    )
 
 
-# -------------------------------------------------------------------
-# Existing fallback rules
-# -------------------------------------------------------------------
+# ============================================================
+# FALLBACK CONTEXT KEYWORDS
+# ============================================================
 
-CONTEXT_KEYWORDS: dict[str, list[str]] = {
+CONTEXT_KEYWORDS = {
     "financial": [
-        "checkout", "payment", "billing", "cart", "subscribe",
-        "donate", "pay", "purchase", "order",
+        "checkout", "payment", "billing", "cart",
+        "subscribe", "donate", "pay", "purchase", "order",
     ],
+
     "government_id": [
-        "kyc", "verify", "identity", "tax", "passport",
-        "apply", "onboarding",
+        "kyc", "verify", "identity", "tax",
+        "passport", "apply", "onboarding",
     ],
+
     "health": [
-        "health", "medical", "clinic", "patient", "insurance",
+        "health", "medical", "clinic",
+        "patient", "insurance",
     ],
+
     "biometric": [
-        "verify", "security", "auth", "login", "signin", "sign in",
+        "verify", "security", "auth",
+        "login", "signin", "sign in",
     ],
+
     "password": [
-        "signup", "sign up", "register", "registration",
-        "login", "log in", "signin", "sign in", "account",
+        "signup", "sign up", "register",
+        "registration", "login", "log in",
+        "signin", "sign in", "account",
         "create account", "authentication",
     ],
+
     "security_question": [
-        "signup", "sign up", "register", "recovery",
-        "reset", "security",
+        "signup", "sign up", "register",
+        "recovery", "reset", "security",
     ],
 }
 
 
-# -------------------------------------------------------------------
-# Website-context detection
-# -------------------------------------------------------------------
+# ============================================================
+# WEBSITE CONTEXTS
+# ============================================================
 
 WEBSITE_ALIASES = {
     "resume_builder": [
-        "resume", "cv", "curriculum", "resume builder",
+        "resume", "cv", "curriculum",
     ],
+
     "job_application": [
-        "job", "career", "employment", "application",
-        "recruitment", "hiring",
+        "job", "career", "employment",
+        "application", "recruitment", "hiring",
     ],
+
     "newsletter_signup": [
-        "newsletter", "subscribe", "mailing list",
+        "newsletter", "mailing list",
     ],
+
     "account_signup": [
-        "signup", "sign up", "register", "registration",
-        "create account", "join",
+        "signup", "sign up", "register",
+        "registration", "create account", "join",
     ],
+
     "login": [
-        "login", "log in", "signin", "sign in",
-        "authentication",
+        "login", "log in", "signin",
+        "sign in", "authentication",
     ],
+
     "ecommerce_checkout": [
-        "checkout", "cart", "purchase", "order", "shop",
-        "store", "ecommerce",
+        "checkout", "cart", "purchase",
+        "order", "shop", "store", "ecommerce",
     ],
+
     "survey_feedback": [
-        "survey", "feedback", "questionnaire", "review",
+        "survey", "feedback",
+        "questionnaire", "review",
     ],
+
     "healthcare_intake": [
-        "health", "medical", "clinic", "patient",
-        "healthcare", "hospital",
+        "health", "medical", "clinic",
+        "patient", "healthcare", "hospital",
     ],
+
     "financial_services": [
-        "bank", "banking", "loan", "finance", "financial",
-        "investment", "broker", "credit",
+        "bank", "banking", "loan", "finance",
+        "financial", "investment", "broker", "credit",
     ],
+
     "government_sites": [
         "government", ".gov", "tax", "official",
     ],
+
     "real_estate_rental_application": [
-        "real estate", "rental", "rent", "property",
-        "apartment", "housing", "lease",
+        "real estate", "rental", "rent",
+        "property", "apartment", "housing", "lease",
     ],
+
     "travel_booking": [
-        "travel", "flight", "hotel", "booking",
-        "reservation", "airline", "vacation",
+        "travel", "flight", "hotel",
+        "booking", "reservation", "airline", "vacation",
     ],
+
     "insurance_application": [
         "insurance", "policy", "claim",
     ],
+
     "event_ticketing": [
         "ticket", "event", "concert", "festival",
     ],
+
     "subscription_free_trial": [
-        "free trial", "trial", "subscription", "subscribe",
+        "free trial", "trial",
+        "subscription", "subscribe",
     ],
+
     "dating_app_signup": [
         "dating", "match", "matches",
     ],
+
     "password_reset": [
-        "password reset", "reset password", "forgot password",
-        "account recovery", "recover account",
+        "password reset", "reset password",
+        "forgot password", "account recovery",
+        "recover account",
     ],
+
     "crypto_exchange_kyc": [
-        "crypto", "cryptocurrency", "exchange", "kyc",
-        "wallet",
+        "crypto", "cryptocurrency",
+        "exchange", "kyc", "wallet",
     ],
 }
 
 
+# ============================================================
+# FIELD ALIASES
+# ============================================================
+
+FIELD_ALIASES = {
+    "name": [
+        "name",
+        "full_name",
+        "fullname",
+        "first_name",
+        "last_name",
+        "display_name",
+    ],
+
+    "email": [
+        "email",
+        "email_address",
+    ],
+
+    "phone": [
+        "phone",
+        "phone_number",
+        "mobile",
+        "mobile_number",
+        "telephone",
+        "tel",
+    ],
+
+    "password": [
+        "password",
+        "passcode",
+    ],
+
+    "username": [
+        "username",
+        "email_username",
+        "user_id",
+    ],
+
+    "date_of_birth": [
+        "dob",
+        "date_of_birth",
+        "birthdate",
+        "birthday",
+    ],
+
+    "address": [
+        "address",
+        "home_address",
+        "billing_address",
+        "shipping_address",
+    ],
+
+    "government_id": [
+        "government_id",
+        "government_id_number",
+        "passport",
+        "passport_number",
+        "national_id",
+        "ssn",
+        "social_security",
+        "tax_id",
+        "pan_number",
+        "driver_license",
+        "driving_license",
+    ],
+
+    "financial": [
+        "financial_card_details",
+        "payment_card_details",
+        "credit_card",
+        "card_number",
+        "bank_details",
+        "financial_details",
+        "payment",
+    ],
+
+    "health": [
+        "health_information",
+        "health_medical_history",
+        "medical_history",
+        "health",
+    ],
+}
+
+
+# ============================================================
+# NORMALIZATION
+# ============================================================
+
 def _normalize(text: str) -> str:
-    """Normalize text for matching."""
     text = str(text or "").lower()
+
     text = text.replace("-", "_")
-    text = re.sub(r"[^a-z0-9_ ]+", " ", text)
-    text = re.sub(r"\s+", " ", text)
+
+    text = re.sub(
+        r"[^a-z0-9_ ]+",
+        " ",
+        text,
+    )
+
+    text = re.sub(
+        r"\s+",
+        " ",
+        text,
+    )
+
     return text.strip()
 
 
-def _detect_website_context(request: ScanRequest) -> str | None:
-    """
-    Try to identify the website/form context from URL and page title.
-    """
-    context_text = _normalize(
+# ============================================================
+# DETECT WEBSITE CONTEXT
+# ============================================================
+
+def _detect_website_context(
+    request: ScanRequest,
+) -> str | None:
+
+    text = _normalize(
         f"{request.url} {request.page_title}"
     )
 
-    # More specific contexts first.
+    # Specific contexts first.
     ordered_contexts = [
         "crypto_exchange_kyc",
         "password_reset",
@@ -172,128 +329,116 @@ def _detect_website_context(request: ScanRequest) -> str | None:
     ]
 
     for context in ordered_contexts:
+
         for keyword in WEBSITE_ALIASES[context]:
-            if _normalize(keyword) in context_text:
+
+            if _normalize(keyword) in text:
                 return context
 
     return None
 
 
-# -------------------------------------------------------------------
-# Field matching
-# -------------------------------------------------------------------
+# ============================================================
+# MATCH CSV FIELD TO BACKEND CATEGORY
+# ============================================================
 
-FIELD_ALIASES = {
-    "name": [
-        "full_name", "fullname", "first_name", "last_name",
-        "name", "display_name",
-    ],
-    "email": [
-        "email", "email_address",
-    ],
-    "phone": [
-        "phone", "phone_number", "mobile", "mobile_number",
-        "telephone",
-    ],
-    "password": [
-        "password", "passcode",
-    ],
-    "username": [
-        "username", "email_username", "user_id",
-    ],
-    "date_of_birth": [
-        "dob", "date_of_birth", "birthdate", "birthday",
-    ],
-    "address": [
-        "address", "home_address", "billing_address",
-        "shipping_address",
-    ],
-    "government_id": [
-        "government_id_number", "government_id",
-        "passport", "passport_number", "national_id",
-        "ssn", "social_security", "tax_id", "pan_number",
-        "driver_license",
-    ],
-    "financial": [
-        "financial_card_details", "payment_card_details",
-        "credit_card", "card_number", "bank_details",
-        "financial_details", "payment",
-    ],
-    "health": [
-        "health_information", "health_medical_history",
-        "medical_history", "health",
-    ],
-}
+def _field_matches_category(
+    csv_field: str,
+    category: str,
+) -> bool:
 
+    field = _normalize(csv_field)
 
-def _field_matches_category(field_name: str, category: str) -> bool:
-    """
-    Determine whether a CSV field description corresponds
-    to the backend's classified category.
-    """
-    field_name = _normalize(field_name)
-
-    if field_name in FIELD_ALIASES.get(category, []):
-        return True
-
-    return any(
-        alias in field_name
-        for alias in FIELD_ALIASES.get(category, [])
+    aliases = FIELD_ALIASES.get(
+        category,
+        [],
     )
 
+    for alias in aliases:
 
-# -------------------------------------------------------------------
-# CSV lookup
-# -------------------------------------------------------------------
+        alias = _normalize(alias)
+
+        if field == alias:
+            return True
+
+    return False
+
+
+# ============================================================
+# CSV LOOKUP
+# ============================================================
 
 def _csv_reasonableness(
     category: str,
     website_context: str | None,
 ) -> tuple[bool, str] | None:
 
-    if website_context is None or CONTEXT_DATA.empty:
+    if website_context is None:
         return None
 
-    rows = CONTEXT_DATA[
+    if CONTEXT_DATA.empty:
+        return None
+
+    website = _normalize(website_context)
+
+    # Find the exact website context.
+    website_rows = CONTEXT_DATA[
         CONTEXT_DATA["Website"].apply(
-            lambda value: _normalize(value) == website_context
+            lambda value: _normalize(value) == website
         )
     ]
 
-    if rows.empty:
+    if website_rows.empty:
         return None
 
-    matching_rows = rows[
-        rows["Field"].apply(
-            lambda field: _field_matches_category(field, category)
+    # Find fields belonging to this backend category.
+    matches = website_rows[
+        website_rows["Field"].apply(
+            lambda value: _field_matches_category(
+                value,
+                category,
+            )
         )
     ]
 
-    if matching_rows.empty:
+    if matches.empty:
         return None
 
-    # If any matching example is Flagged, treat the request as
-    # unreasonable for this context.
-    if (matching_rows["Status"] == "Flagged").any():
+    # IMPORTANT:
+    # Flagged takes priority over Can_ask.
+    # This prevents a conflicting dataset entry
+    # from accidentally making a risky request safe.
+
+    flagged = matches[
+        matches["Status"].str.lower() == "flagged"
+    ]
+
+    if not flagged.empty:
+
         return (
             False,
-            f"Context dataset flags '{category}' as unnecessary "
-            f"for this type of form.",
+            f"Context dataset flags '{category}' "
+            "as unnecessary for this type of form.",
         )
 
-    if (matching_rows["Status"] == "Can_ask").any():
+    can_ask = matches[
+        matches["Status"].str.lower() == "can_ask"
+    ]
+
+    if not can_ask.empty:
+
         return (
             True,
-            f"Context dataset supports requesting '{category}' "
-            f"for this type of form.",
+            f"Context dataset supports requesting "
+            f"'{category}' for this type of form.",
         )
 
     return None
 
 
-# -------------------------------------------------------------------
-# Main reasonableness function
-# -------------------------------------------------------------------
+# ============================================================
+# MAIN REASONABLENESS DECISION
+# ============================================================
 
 def is_reasonable(
     category: str,
@@ -301,12 +446,24 @@ def is_reasonable(
     request: ScanRequest,
 ) -> tuple[bool, str]:
 
-    # Low-sensitivity information is normally reasonable.
-    if sensitivity == "low":
-        return True, "Standard field for this type of form."
+    # --------------------------------------------------------
+    # 1. LOW SENSITIVITY
+    # --------------------------------------------------------
 
-    # First use the expanded contextual dataset.
-    website_context = _detect_website_context(request)
+    if sensitivity == "low":
+
+        return (
+            True,
+            "Standard field for this type of form.",
+        )
+
+    # --------------------------------------------------------
+    # 2. CSV — PRIMARY SOURCE
+    # --------------------------------------------------------
+
+    website_context = _detect_website_context(
+        request
+    )
 
     csv_result = _csv_reasonableness(
         category,
@@ -316,35 +473,57 @@ def is_reasonable(
     if csv_result is not None:
         return csv_result
 
-    # Fall back to deterministic keyword rules.
-    context_text = (
+    # --------------------------------------------------------
+    # 3. KEYWORD FALLBACK
+    # --------------------------------------------------------
+
+    context_text = _normalize(
         f"{request.url} {request.page_title}"
-    ).lower()
+    )
 
-    keywords = CONTEXT_KEYWORDS.get(category, [])
+    keywords = CONTEXT_KEYWORDS.get(
+        category,
+        [],
+    )
 
-    if any(keyword in context_text for keyword in keywords):
-        if category == "password":
+    for keyword in keywords:
+
+        if _normalize(keyword) in context_text:
+
+            if category == "password":
+
+                return (
+                    True,
+                    "Password is appropriate for "
+                    "authentication on a login or "
+                    "account-related page.",
+                )
+
             return (
                 True,
-                "Password is appropriate for authentication on a "
-                "login or account-related page.",
+                f"'{category}' data appears justified "
+                "by the page context.",
             )
 
+    # --------------------------------------------------------
+    # 4. MEDIUM-SENSITIVITY FALLBACK
+    # --------------------------------------------------------
+
+    if sensitivity == "medium":
+
         return (
             True,
-            f"'{category}' data appears justified by the page context.",
+            f"'{category}' data may be relevant, "
+            "but its necessity depends on the "
+            "specific purpose of the form.",
         )
 
-    # Medium-sensitivity fields are not automatically unreasonable.
-    if sensitivity == "medium":
-        return (
-            True,
-            f"'{category}' data may be relevant, but its necessity "
-            f"depends on the specific purpose of the form.",
-        )
+    # --------------------------------------------------------
+    # 5. HIGH / CRITICAL WITHOUT JUSTIFICATION
+    # --------------------------------------------------------
 
     return (
         False,
-        f"'{category}' data requested without clear contextual justification.",
+        f"'{category}' data requested without "
+        "clear contextual justification.",
     )

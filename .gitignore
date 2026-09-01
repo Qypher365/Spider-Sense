@@ -1,11 +1,21 @@
-.env
+# Python
 __pycache__/
-*.pyc
-.venv/
-.DS_Store
-__pycache__/
-*.pyc
-.venv/
-~$*.xlsx
+*.py[cod]
 
+# Virtual environments
+.venv/
+venv/
+
+# Pytest
+.pytest_cache/
+
+# Environment / secrets
+.env
+.env.*
+
+# IDE
+.vscode/
+
+# Excel / temporary files
 *.xlsx
+~$*.xlsx
