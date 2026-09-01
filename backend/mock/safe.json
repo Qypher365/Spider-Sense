@@ -1,10 +1,8 @@
-[
-  {
-    "summary": "Score is 90, low risk level.",
-    "evidence": [
-      "Name is reasonably requested.",
-      "Email is reasonably requested."
-    ],
-    "recommendation": "Fill out your name and email."
-  }
-]
+{
+  "summary": "Score is 12, low risk level.",
+  "evidence": [
+    "Name is a standard field for account creation.",
+    "Email address is appropriate for account creation and communication."
+  ],
+  "recommendation": "Fill out your name and email — these are reasonable requests."
+}

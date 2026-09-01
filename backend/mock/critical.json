@@ -1,7 +1,7 @@
 {
-  "summary": "Score is 10, high risk level.",
+  "summary": "Score is 100, critical risk level.",
   "evidence": [
-    "Government ID request is unreasonable and highly sensitive."
+    "Government ID data is highly sensitive and there's no clear legitimate purpose for requesting it here."
   ],
-  "recommendation": "Decline providing your government ID."
+  "recommendation": "Decline providing your government ID — this field is not reasonable for this form."
 }
