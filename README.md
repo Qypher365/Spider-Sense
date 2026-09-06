@@ -70,10 +70,10 @@ Shlok · Himanshu · Sameer · Swastik · Divyansh
 
 | Area | Owner(s) |
 |---|---|
-| Browser extension | Shlok, Himanshu |
-| Detection & risk engine | Sameer, Divyansh |
-| Backend | Shlok, Himanshu |
-| Explanation logic | Sameer, Divyansh |
+| Browser extension | Shlok |
+| Detection & risk engine | Sameer |
+| Backend | Himanshu |
+| Explanation logic | Divyansh |
 | Dashboard & experience | Swastik |
 
 ## License
